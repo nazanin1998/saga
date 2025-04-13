@@ -54,6 +54,11 @@ public class CommandActionUtils {
         command.setCommandStatus(CommandStatus.DECORATION_STARTED);
     }
 
+
+    public void startCommit(SagaCommandEntity command) {
+        command.setCommandStatus(CommandStatus.POST_EXECUTION_STARTED);
+    }
+
     public void startPostExecution(SagaCommandEntity command) {
         command.setCommandStatus(CommandStatus.POST_EXECUTION_STARTED);
     }
@@ -66,6 +71,14 @@ public class CommandActionUtils {
     public void failCheckingConditions(SagaCommandEntity command, CommandExecutionCondition condition, Exception e) {
         command.setCommandStatus(CommandStatus.CONDITIONS_CHECKING_FAILED);
         command.addFailureStep(condition, SagaCommandStepType.CONDITION, e);
+    }
+
+    public void failCommit(SagaCommandEntity command) {
+        command.setCommandStatus(CommandStatus.COMMITTING_FAILED);
+    }
+
+    public void skipCommit(SagaCommandEntity command) {
+        command.setCommandStatus(CommandStatus.COMMITTING_SKIPPED);
     }
 
     public void failDecoration(SagaCommandEntity command, CommandInputDecorator decorator, Exception e) {
@@ -93,6 +106,10 @@ public class CommandActionUtils {
     public void successDecoration(SagaCommandEntity command, CommandInputDecorator decorator) {
         command.addSuccessStep(decorator, SagaCommandStepType.DECORATOR);
         command.setCommandStatus(CommandStatus.DECORATION_PASSED);
+    }
+
+    public void successCommiting(SagaCommandEntity command) {
+        command.setCommandStatus(CommandStatus.COMMITTING_PASSED);
     }
 
     public void addSuccessPostExecutionStep(SagaCommandEntity command, CommandPostExecution postExecution) {

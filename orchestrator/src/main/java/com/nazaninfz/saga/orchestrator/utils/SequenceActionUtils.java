@@ -15,4 +15,12 @@ public class SequenceActionUtils {
                 .setSequenceStatus(SequenceStatus.INITIALIZED)
                 .setExecutedCommandIds(new ArrayList<>());
     }
+
+    public void success(SagaSequenceEntity sequence) {
+        sequence.setSequenceStatus(SequenceStatus.SUCCEED);
+    }
+
+    public void unknown(SagaSequenceEntity sequence) {
+        sequence.setSequenceStatus(SequenceStatus.UNKNOWN);
+    }
 }

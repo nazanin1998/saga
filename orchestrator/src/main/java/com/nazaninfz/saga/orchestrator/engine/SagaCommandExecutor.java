@@ -1,16 +1,22 @@
 package com.nazaninfz.saga.orchestrator.engine;
 
+import com.nazaninfz.commons.exception.MicroserviceException;
+import com.nazaninfz.messagingsharedmodel.enums.RollbackType;
 import com.nazaninfz.saga.orchestrator.core.entity.SagaCommandEntity;
 import com.nazaninfz.saga.orchestrator.core.entity.SagaSequenceEntity;
+import com.nazaninfz.saga.orchestrator.core.exception.CommitingException;
+import com.nazaninfz.saga.orchestrator.core.exception.UnknownCommandTypeException;
 import com.nazaninfz.saga.orchestrator.core.interfaces.SagaCommandOutput;
 import com.nazaninfz.saga.orchestrator.core.mapper.SagaMapper;
 import com.nazaninfz.saga.orchestrator.core.model.SagaBaseCommand;
 import com.nazaninfz.saga.orchestrator.core.model.SagaCommand;
 import com.nazaninfz.saga.orchestrator.repository.SagaCommandRepository;
-import com.nazaninfz.saga.orchestrator.service.SagaSequenceServices;
+import com.nazaninfz.saga.orchestrator.repository.SagaSequenceRepository;
 import com.nazaninfz.saga.orchestrator.utils.CommandActionUtils;
+import com.nazaninfz.saga.orchestrator.utils.SagaOrchLogger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -20,10 +26,9 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class SagaCommandExecutor {
-    private final SagaCommandFactory commandFactory;
     private final SagaCommandRepository commandRepository;
     private final SagaMapper mapper;
-    private final SagaSequenceServices sequenceServices;
+    private final SagaSequenceRepository sequenceRepository;
     private final InputDecorator inputDecorator;
     private final PostExecutor postExecutor;
     private final ConditionChecker conditionChecker;
@@ -43,42 +48,32 @@ public class SagaCommandExecutor {
 //            return;
 //        }
         if (!(baseCommand instanceof SagaCommand command)) {
-            log.error("UnknownCommandTypeException in execute command");
+            SagaOrchLogger.errorLog("EXECUTION", "Unknown command type exception");
             throw new UnknownCommandTypeException();
         }
+
         SagaCommandEntity commandEntity = saveCommand(command, sequenceEntity.getSequenceId());
-        infoLog("Started", commandEntity);
+        SagaOrchLogger.infoLog("EXECUTION", "Started", commandEntity);
 
         boolean areConditionsSatisfied = conditionChecker.areAllConditionsSatisfied(
-                sagaCommand.getConditions(),
-                sagaCommand.getInput(),
+                command.getConditions(),
                 commandEntity,
                 outputMap,
                 contextMap);
 
         if (!areConditionsSatisfied) return;
 
-        inputDecorator.decorate(
-                sagaCommand.getDecorator(),
-                sagaCommand.getInput(),
-                commandEntity,
-                outputMap,
-                contextMap
-        );
-        commitCommand(sagaCommand, commandEntity, sequenceEntity);
-        postExecutor.execute(
-                sagaCommand.getPostExecutions(),
-                sagaCommand.getInput(),
-                commandEntity,
-                outputMap,
-                contextMap
-        );
+        inputDecorator.decorate(command.getDecorator(), commandEntity, outputMap, contextMap);
 
-        if (CollectionUtils.isEmpty(sagaCommand.getNextCommands())) {
+        commitCommand(command, commandEntity, sequenceEntity);
+
+        postExecutor.execute(command.getPostExecutions(), commandEntity, outputMap, contextMap);
+
+        if (CollectionUtils.isEmpty(command.getNextCommands())) {
             return;
         }
 
-        for (SagaBaseCommand nextCommand : sagaCommand.getNextCommands()) {
+        for (SagaBaseCommand nextCommand : command.getNextCommands()) {
             executeCommand(nextCommand, contextMap, outputMap, sequenceEntity);
         }
     }
@@ -95,47 +90,40 @@ public class SagaCommandExecutor {
             SagaSequenceEntity sequenceEntity
     ) {
         try {
-            commandEntity = commandEntity.saveNewStatus(CommandStatus.COMMITTING_STARTED, commandServices);
+            CommandActionUtils.startCommit(commandEntity);
+            commandRepository.save(commandEntity);
             command.commit();
-            commandEntity = commandEntity.saveNewStatus(CommandStatus.COMMITTING_PASSED, commandServices);
-            sequenceEntity = sequenceServices.saveSequence(sequenceEntity.addExecutedCommandId(command.getCommandId()));
-        } catch (SagaGeneralException e) {
+            CommandActionUtils.successCommiting(commandEntity);
+            commandRepository.save(commandEntity);
+            sequenceRepository.save(sequenceEntity.addExecutedCommandId(commandEntity.getCommandId()));
+        } catch (MicroserviceException e) {
             handleCommittingException(command, commandEntity, e);
         } catch (Exception e) {
-            handleCommittingException(command, commandEntity, new SagaGeneralException(e));
+            handleCommittingException(command, commandEntity, new CommitingException(e));
         }
 
     }
 
-    private void handleCommittingException(SagaCommand command, SagaCommandEntity commandEntity, SagaGeneralException e) {
-        log.error("exception in commit command id: {}, title: {}",
-                command.getCommandId(),
-                command.getCommandTitle());
+    private void handleCommittingException(SagaCommand command, SagaCommandEntity commandEntity, MicroserviceException e) {
+        SagaOrchLogger.errorLog("EXECUTION", "exception in commit command", commandEntity, e);
         commandEntity.setExceptionSubText(ExceptionUtils.getStackTrace(e));
 
-        if (command.getOnExceptionBehavior() == OnExceptionBehavior.ROLLBACK) {
-            commandEntity.setCommandStatus(CommandStatus.COMMITTING_FAILED);
-            commandEntity = commandEntity.save(commandServices);
+        if (commandEntity.getRollbackIfCurrentCommandHasException() == RollbackType.REQUIRED) {
+            CommandActionUtils.failCommit(commandEntity);
+            commandRepository.save(commandEntity);
+            SagaOrchLogger.infoLog("EXECUTION", "Must have rollback", commandEntity);
             throw e;
         }
-        if (command.getOnExceptionBehavior() == OnExceptionBehavior.SKIP) {
-            commandEntity = commandEntity.saveNewStatus(CommandStatus.COMMITTING_SKIPPED, commandServices);
+        if (command.getRollbackIfCurrentCommandHasException() == RollbackType.NOT_REQUIRED) {
+            CommandActionUtils.skipCommit(commandEntity);
+            commandRepository.save(commandEntity);
+            SagaOrchLogger.infoLog("EXECUTION", "Skip command", commandEntity);
             return;
         }
 
-        log.error("unsupported operation for on exception behaviour");
+        SagaOrchLogger.infoLog("EXECUTION", "Unsupported RollbackType", commandEntity);
         throw new UnsupportedOperationException(e);
     }
 
-    private static void infoLog(String message, SagaCommandEntity command) {
-        log.info("SAGA (ORCHESTRATOR) - COMMAND - {}, command: {}, commandId: {}, sequenceId: {}, orderId: {}",
-                message, command.getCommandTitle(), command.getCommandId(), command.getSequenceId(),
-                command.getOrderId());
-    }
-
-    private static void errorLog(String message, SagaSequenceEntity sequenceEntity, Exception e) {
-        log.error("SAGA (ORCHESTRATOR) - COMMAND_EXCEPTION - {}, sequence id: {}, title: {}",
-                message, sequenceEntity.getSequenceId(), sequenceEntity.getSequenceTitle(), e);
-    }
 
 }
