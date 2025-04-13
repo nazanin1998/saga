@@ -7,7 +7,6 @@ import com.nazaninfz.saga.orchestrator.core.model.CommandExecutionCondition;
 import com.nazaninfz.saga.orchestrator.core.model.CommandHelperIdentifier;
 import com.nazaninfz.saga.orchestrator.core.model.CommandInputDecorator;
 import com.nazaninfz.saga.orchestrator.core.model.CommandPostExecution;
-import com.nazaninfz.saga.orchestrator.engine.InputDecorator;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
@@ -83,10 +82,6 @@ public class CommandActionUtils {
         command.setCommandStatus(CommandStatus.CONDITIONS_CHECKING_PASSED);
     }
 
-    public void successDecoration(SagaCommandEntity command) {
-        command.setCommandStatus(CommandStatus.DECORATION_PASSED);
-    }
-
     public void successPostExecution(SagaCommandEntity command) {
         command.setCommandStatus(CommandStatus.POST_EXECUTION_PASSED);
     }
@@ -95,8 +90,9 @@ public class CommandActionUtils {
         command.addSuccessStep(condition, SagaCommandStepType.CONDITION);
     }
 
-    public void addSuccessDecorationStep(SagaCommandEntity command, CommandInputDecorator decorator) {
+    public void successDecoration(SagaCommandEntity command, CommandInputDecorator decorator) {
         command.addSuccessStep(decorator, SagaCommandStepType.DECORATOR);
+        command.setCommandStatus(CommandStatus.DECORATION_PASSED);
     }
 
     public void addSuccessPostExecutionStep(SagaCommandEntity command, CommandPostExecution postExecution) {
