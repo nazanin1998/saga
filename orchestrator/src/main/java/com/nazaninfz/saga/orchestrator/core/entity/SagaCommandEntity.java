@@ -32,7 +32,7 @@ public class SagaCommandEntity {
 
     @Id
     private String commandId;
-    private String commandTitle;
+    private String commandName;
     private String sequenceId;
     private String exceptionSubText;
     private int orderId;

@@ -15,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public abstract class SagaCommand extends SagaBaseCommand implements SagaCommandBehavior {
-    private String commandTitle;
+    private String commandName;
     private int orderId;
     private SagaCommandInput input;
     private RollbackType rollbackIfCurrentCommandHasException;

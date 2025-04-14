@@ -16,7 +16,7 @@ public class SagaOrchLogger {
         log.info("SAGA (ORCHESTRATOR) - {} - {}, command: {}, commandId: {}, sequenceId: {}, orderId: {}",
                 stepName,
                 message,
-                command.getCommandTitle(),
+                command.getCommandName(),
                 command.getCommandId(),
                 command.getSequenceId(),
                 command.getOrderId());
@@ -26,7 +26,7 @@ public class SagaOrchLogger {
         log.error("SAGA (ORCHESTRATOR) - {}_EXCEPTION - {}, command: {}, commandId: {}, sequenceId: {}, orderId: {}",
                 stepName,
                 message,
-                command.getCommandTitle(),
+                command.getCommandName(),
                 command.getCommandId(),
                 command.getSequenceId(),
                 command.getOrderId(), e);
@@ -37,7 +37,7 @@ public class SagaOrchLogger {
     }
 
     public static void errorLog(SagaCommandStepType stepType, String message) {
-        log.error("SAGA (ORCHESTRATOR) - {}_EXCEPTION - {}", stepType.name(), message);
+        errorLog(stepType.name(), message);
     }
 
     public static void errorLog(String stepType, String message) {
